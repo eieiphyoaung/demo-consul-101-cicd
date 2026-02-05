@@ -47,6 +47,7 @@ docker run --rm -p 9002:9002 --name dashboard --network mynet \
 ## another way to with dockercompose
 
 docker compose up --build
+docker compose up --scale counting=3 --scale dashboard=3
 
 ## delete docker images and docker ps
 
