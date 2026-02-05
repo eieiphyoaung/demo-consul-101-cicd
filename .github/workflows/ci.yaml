@@ -39,6 +39,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.counting
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/counting:latest
@@ -49,6 +50,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.dashboard
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/dashboard:latest

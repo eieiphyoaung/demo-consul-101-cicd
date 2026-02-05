@@ -27,26 +27,44 @@ rm dashboard-service_linux_arm64.zip
 ### 2. Build Images
 
 ```sh
-docker build -f Dockerfile.counting -t <your-dockerhub-username>/counting:latest .
-docker build -f Dockerfile.dashboard -t <your-dockerhub-username>/dashboard:latest .
+docker build -f Dockerfile.counting -t counting:latest .
+docker build -f Dockerfile.dashboard -t dashboard:latest .
 ```
 
-### 3. Run with Docker Compose
+### 3. Run with Docker Compose (Local Build)
+
+Update your `docker-compose.yaml` to use `build:` instead of `image:` for each service:
+
+```yaml
+services:
+  counting:
+    build:
+      context: .
+      dockerfile: Dockerfile.counting
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+```
+
+Then run:
 
 ```sh
 docker compose up --scale counting=3 --scale dashboard=1
 ```
+
+This will build and run containers for your local architecture (ARM64 on Apple Silicon).
 
 ### 4. Run Individually (with custom network)
 
 ```sh
 docker network create mynet
 
-docker run -d --rm --name counting --network mynet -p 9003:9003 <your-dockerhub-username>/counting:latest
+docker run -d --rm --name counting --network mynet -p 9003:9003 counting:latest
 
 docker run -d --rm --name dashboard --network mynet -p 9002:9002 \
   -e COUNTING_SERVICE_URL=http://counting:9003 \
-  <your-dockerhub-username>/dashboard:latest
+  dashboard:latest
 ```
 
 ### Build and Run with Scaling
