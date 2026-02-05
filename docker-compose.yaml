@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  counting:
+    image: ei2000/counting:latest
+    container_name: counting
+    environment:
+      - PORT=9003
+
+  dashboard:
+    image: ei2000/dashboard:latest
+    container_name: dashboard
+    environment:
+      - PORT=9002
+      - COUNTING_SERVICE_URL=http://counting:9003
+    depends_on:
+      - counting
