@@ -1,5 +1,3 @@
-## Quick Start
-
 ### 1. Prepare Binaries
 Download the Linux ARM64 binaries for both services:
 
