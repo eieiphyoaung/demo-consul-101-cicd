@@ -2,15 +2,6 @@
 
 A demonstration project showcasing Consul service discovery and health checking with Docker Compose, featuring automated service registration for counting and dashboard microservices.
 
-## Overview
-
-This project demonstrates:
-- Running Consul in development mode using Docker
-- Deploying multiple instances of microservices with Docker Compose
-- Automatic service registration with Consul
-- Health check monitoring for all services
-- Service discovery and load balancing
-
 ## Architecture
 
 The project consists of:
@@ -44,7 +35,6 @@ This command will:
 ### 3. Access Services
 
 - **Consul UI**: http://localhost:8500
-- **Dashboard Services**: Accessible internally via service discovery
 
 ### 4. View Container Startup Logs
 
@@ -134,13 +124,7 @@ demo-consul-101-cicd-dashboard-3: 172.20.0.6
 
 ## Service Registration
 
-Services are automatically registered with Consul using the `register-services.sh` script, which:
-
-1. Detects all running counting and dashboard containers
-2. Extracts their IP addresses from the Docker network
-3. Generates Consul service definitions
-4. Registers each service with health checks
-5. Verifies registration status
+Services are automatically registered with Consul using the `register-services.sh` script
 
 ### Manual Registration
 
