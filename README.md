@@ -8,9 +8,15 @@ The project consists of:
 - **Consul Server**: Service registry and health checker
 - **Counting Service**: Backend API service (3 instances)
 - **Dashboard Service**: Frontend UI service (3 instances)
+- **Nginx Load Balancer**: Distributes traffic across dashboard instances
 - **Consul Register**: Automated service registration container
 
 All services run on a custom Docker bridge network (`consul-net`) for isolated communication.
+
+## � Documentation
+
+- **[CONSUL_ACCESS_GUIDE.md](./CONSUL_ACCESS_GUIDE.md)** - How to access services via Consul (DNS, API, service mesh)
+- **[test-consul-access.sh](./test-consul-access.sh)** - Automated testing script for all access methods
 
 ## Prerequisites
 
@@ -28,15 +34,66 @@ docker compose up --scale counting=3 --scale dashboard=3
 
 This command will:
 - Start Consul server on port 8500
+- Start Nginx load balancer on port 8080
 - Launch 3 counting service instances
 - Launch 3 dashboard service instances
 - Automatically register all services with Consul
 
-### 3. Access Services
+### 2. Access Services
 
+- **Dashboard (via Load Balancer)**: http://localhost:8080
 - **Consul UI**: http://localhost:8500
 
-### 4. View Container Startup Logs
+### 3. Test Load Balancing
+
+Verify that Nginx is distributing traffic across dashboard instances:
+
+```sh
+# Check Nginx status
+docker logs nginx-lb
+
+# Access dashboard multiple times and check which instance responds
+curl -I http://localhost:8080
+
+# Monitor dashboard logs to see which instance handles requests
+docker compose logs -f dashboard
+```
+
+### 4. Test Service Access via Consul
+
+Run the automated test script to verify all access methods:
+
+```sh
+# Make the script executable
+chmod +x test-consul-access.sh
+
+# Run comprehensive tests
+./test-consul-access.sh
+```
+
+**What this tests:**
+- ✅ Consul API queries for services
+- ✅ Service health status checks
+- ✅ Consul DNS resolution (container-to-container)
+- ✅ Nginx load balancing
+- ✅ Direct container access
+- ✅ Load distribution across instances
+
+**Access methods:**
+```sh
+# Access dashboard via Nginx load balancer (from host)
+curl http://localhost:8080
+
+# Query Consul for counting service endpoints
+curl http://localhost:8500/v1/catalog/service/counting | jq .
+
+# Access counting via Consul DNS (from inside dashboard container)
+docker exec demo-consul-101-cicd-dashboard-1 wget -qO- http://counting:9003
+```
+
+> 📘 **See [CONSUL_ACCESS_GUIDE.md](./CONSUL_ACCESS_GUIDE.md) for complete details on all access methods**
+
+### 5. View Container Startup Logs
 
 Monitor service containers as they start:
 
@@ -73,7 +130,7 @@ dashboard-2  | (Pass as COUNTING_SERVICE_URL environment variable)
 dashboard-2  | Starting websocket server...
 ```
 
-### 5. View Service Registration Logs
+### 6. View Service Registration Logs
 
 Monitor the automated service registration process:
 
@@ -103,6 +160,42 @@ consul-register  | Check health: consul catalog service counting
 consul-register  | Check health: consul catalog service dashboard
 consul-register exited with code 0
 ```
+
+## Service Details
+
+### Nginx Load Balancer
+- **Image**: `nginx:alpine`
+- **Port**: 8080 (external) → 80 (internal)
+- **Load Balancing**: Least connections algorithm
+- **Backend**: All dashboard service instances
+- **Health Check**: `/health` endpoint
+- **Features**:
+  - WebSocket support for real-time updates
+  - Automatic request distribution
+  - Connection upgrade handling
+  - Custom headers for proxy forwarding
+
+### Counting Service
+- **Image**: `ei2000/counting:latest`
+- **Port**: 9003
+- **Instances**: 3 (scalable)
+- **Health Check**: HTTP GET to `/health`
+- **Purpose**: Backend API providing counting functionality
+
+### Dashboard Service
+- **Image**: `ei2000/dashboard:latest`
+- **Port**: 9002
+- **Instances**: 3 (scalable)
+- **Health Check**: HTTP GET to `/health`
+- **Upstream**: Connects to counting service via Consul DNS
+- **Access**: Via Nginx load balancer on port 8080
+
+### Consul
+- **Image**: `hashicorp/consul:latest`
+- **Mode**: Development (-dev)
+- **UI Port**: 8500
+- **DNS Port**: 8600
+- **Purpose**: Service registry and health checking
 
 ## Checking Container IPs
 
@@ -155,6 +248,40 @@ docker compose up --scale counting=5 --scale dashboard=2
 docker compose up --scale counting=1 --scale dashboard=1
 ```
 
+**Note**: When scaling dashboard services beyond 3 instances, you'll need to update the `nginx.conf` file to include the additional backend servers, then reload Nginx:
+
+```sh
+# Edit nginx.conf to add more dashboard instances
+# Then reload Nginx configuration
+docker exec nginx-lb nginx -s reload
+```
+
+## Nginx Configuration
+
+The Nginx load balancer is configured with:
+
+- **Load Balancing Algorithm**: Least connections (`least_conn`)
+- **Backend Servers**: 
+  - `demo-consul-101-cicd-dashboard-1:9002`
+  - `demo-consul-101-cicd-dashboard-2:9002`
+  - `demo-consul-101-cicd-dashboard-3:9002`
+- **WebSocket Support**: Enabled for real-time updates
+- **Health Check**: Available at `/health`
+- **Proxy Headers**: X-Real-IP, X-Forwarded-For, X-Forwarded-Proto
+
+To modify the Nginx configuration:
+
+```sh
+# Edit the nginx.conf file
+nano nginx.conf
+
+# Reload Nginx to apply changes
+docker exec nginx-lb nginx -s reload
+
+# Test configuration for syntax errors
+docker exec nginx-lb nginx -t
+```
+
 ## Stopping and Cleanup
 
 ### Stop All Services
@@ -180,3 +307,42 @@ docker rmi -f $(docker images -q)
 ```
 
 **Note**: This is a development setup. For production deployments, use Consul in cluster mode with proper security configurations.
+
+## Quick Reference
+
+### Common Commands
+
+```sh
+# Start all services with scaling
+docker compose up --scale counting=3 --scale dashboard=3
+
+# Start in detached mode
+docker compose up -d --scale counting=3 --scale dashboard=3
+
+# View logs
+docker compose logs -f
+docker logs nginx-lb
+docker logs consul
+
+# Check Nginx configuration
+docker exec nginx-lb nginx -t
+
+# Reload Nginx
+docker exec nginx-lb nginx -s reload
+
+# Test load balancer
+curl http://localhost:8080
+curl http://localhost:8080/health
+
+# Check Consul services
+docker exec consul consul catalog services
+
+# Stop all services
+docker compose down
+```
+
+### Useful URLs
+
+- **Dashboard (Load Balanced)**: http://localhost:8080
+- **Consul UI**: http://localhost:8500
+- **Nginx Health Check**: http://localhost:8080/health

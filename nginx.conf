@@ -1,0 +1,43 @@
+events {
+    worker_connections 1024;
+}
+
+http {
+    upstream dashboard_backend {
+        # Dynamic upstream - will be populated by consul-template or manually
+        least_conn;
+        
+        server demo-consul-101-cicd-dashboard-1:9002;
+        server demo-consul-101-cicd-dashboard-2:9002;
+        server demo-consul-101-cicd-dashboard-3:9002;
+    }
+
+    server {
+        listen 80;
+        server_name localhost;
+
+        location / {
+            proxy_pass http://dashboard_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # WebSocket support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            
+            # Timeouts
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+        }
+
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+    }
+}

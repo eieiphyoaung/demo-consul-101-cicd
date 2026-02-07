@@ -22,12 +22,25 @@ services:
     image: ei2000/dashboard:latest
     environment:
       - PORT=9002
-      - COUNTING_SERVICE_URL=http://counting:9003
+      - COUNTING_SERVICE_URL=http://counting.service.consul:9003
     depends_on:
       - counting
       - consul
     networks:
       - consul-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-lb
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - dashboard
+    networks:
+      - consul-net
+    restart: unless-stopped
 
   consul-register:
     image: hashicorp/consul:latest
@@ -45,6 +58,7 @@ services:
       - consul
       - counting
       - dashboard
+      - nginx
     networks:
       - consul-net
     environment:
