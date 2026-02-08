@@ -2,19 +2,23 @@ services:
   consul:
     image: hashicorp/consul:latest
     container_name: consul
-    command: agent -dev -client=0.0.0.0
+    command: agent -dev -client=0.0.0.0 -recursor=8.8.8.8
     ports:
       - "8500:8500"
       - "8600:8600/udp"
     networks:
-      - consul-net
+      consul-net:
+        ipv4_address: 172.20.0.10
+    restart: unless-stopped
 
   counting:
     image: ei2000/counting:latest
     environment:
       - PORT=9003
     networks:
-      - consul-net
+      consul-net:
+        aliases:
+          - counting
     depends_on:
       - consul
 
@@ -22,7 +26,7 @@ services:
     image: ei2000/dashboard:latest
     environment:
       - PORT=9002
-      - COUNTING_SERVICE_URL=http://counting.service.consul:9003
+      - COUNTING_SERVICE_URL=http://counting:9003
     depends_on:
       - counting
       - consul
@@ -67,3 +71,6 @@ services:
 networks:
   consul-net:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

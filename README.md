@@ -13,10 +13,14 @@ The project consists of:
 
 All services run on a custom Docker bridge network (`consul-net`) for isolated communication.
 
-## � Documentation
+## Key Features
 
-- **[CONSUL_ACCESS_GUIDE.md](./CONSUL_ACCESS_GUIDE.md)** - How to access services via Consul (DNS, API, service mesh)
-- **[test-consul-access.sh](./test-consul-access.sh)** - Automated testing script for all access methods
+- ✅ **Service Discovery**: Docker DNS resolves service names automatically
+- ✅ **Load Balancing**: Nginx distributes traffic across dashboard instances
+- ✅ **Health Monitoring**: Consul monitors all service health
+- ✅ **Auto Registration**: Services automatically register with Consul
+- ✅ **Scalability**: Easily scale services up or down
+- ✅ **Zero Configuration**: Works out of the box
 
 ## Prerequisites
 
@@ -59,41 +63,7 @@ curl -I http://localhost:8080
 docker compose logs -f dashboard
 ```
 
-### 4. Test Service Access via Consul
-
-Run the automated test script to verify all access methods:
-
-```sh
-# Make the script executable
-chmod +x test-consul-access.sh
-
-# Run comprehensive tests
-./test-consul-access.sh
-```
-
-**What this tests:**
-- ✅ Consul API queries for services
-- ✅ Service health status checks
-- ✅ Consul DNS resolution (container-to-container)
-- ✅ Nginx load balancing
-- ✅ Direct container access
-- ✅ Load distribution across instances
-
-**Access methods:**
-```sh
-# Access dashboard via Nginx load balancer (from host)
-curl http://localhost:8080
-
-# Query Consul for counting service endpoints
-curl http://localhost:8500/v1/catalog/service/counting | jq .
-
-# Access counting via Consul DNS (from inside dashboard container)
-docker exec demo-consul-101-cicd-dashboard-1 wget -qO- http://counting:9003
-```
-
-> 📘 **See [CONSUL_ACCESS_GUIDE.md](./CONSUL_ACCESS_GUIDE.md) for complete details on all access methods**
-
-### 5. View Container Startup Logs
+### 4. View Container Startup Logs
 
 Monitor service containers as they start:
 
@@ -130,7 +100,7 @@ dashboard-2  | (Pass as COUNTING_SERVICE_URL environment variable)
 dashboard-2  | Starting websocket server...
 ```
 
-### 6. View Service Registration Logs
+### 5. View Service Registration Logs
 
 Monitor the automated service registration process:
 
@@ -187,7 +157,7 @@ consul-register exited with code 0
 - **Port**: 9002
 - **Instances**: 3 (scalable)
 - **Health Check**: HTTP GET to `/health`
-- **Upstream**: Connects to counting service via Consul DNS
+- **Upstream**: Connects to counting service via Docker DNS (`http://counting:9003`)
 - **Access**: Via Nginx load balancer on port 8080
 
 ### Consul
@@ -196,6 +166,36 @@ consul-register exited with code 0
 - **UI Port**: 8500
 - **DNS Port**: 8600
 - **Purpose**: Service registry and health checking
+
+## How Service Discovery Works
+
+Dashboard connects to Counting service using Docker's built-in DNS:
+
+```
+Dashboard Container
+    ↓ Query: counting:9003
+    ↓
+Docker DNS (127.0.0.11)
+    ↓ Resolves to all healthy counting instances
+    ↓
+Returns: [172.20.0.3, 172.20.0.4, 172.20.0.2]
+    ↓ Round-robin load balancing
+    ↓
+Counting Service Instance
+```
+
+**Configuration:**
+```yaml
+dashboard:
+  environment:
+    - COUNTING_SERVICE_URL=http://counting:9003  # Docker DNS resolves this
+```
+
+**Why this works:**
+- Docker DNS automatically resolves service names from docker-compose.yaml
+- Network aliases ensure `counting` resolves to all counting containers
+- Consul monitors health and registers services for observability
+- Simple, reliable, and works out of the box!
 
 ## Checking Container IPs
 
@@ -229,11 +229,35 @@ If you need to manually register services:
 
 ### Verify Registration
 
-Check registered services:
+Check registered services in Consul:
 
 ```sh
 # List all services
-consul catalog services
+docker exec consul consul catalog services
+
+# Check counting service details
+docker exec consul consul catalog service counting
+
+# Check dashboard service details
+docker exec consul consul catalog service dashboard
+
+# Check health status
+curl http://localhost:8500/v1/health/service/counting
+```
+
+## Testing Service Discovery
+
+Test that dashboard can reach counting service:
+
+```sh
+# Test DNS resolution
+docker exec demo-consul-101-cicd-dashboard-1 nslookup counting
+
+# Test HTTP connection
+docker exec demo-consul-101-cicd-dashboard-1 wget -qO- http://counting:9003
+
+# Test end-to-end via Nginx
+curl http://localhost:8080
 ```
 
 ## Scaling Services
@@ -308,6 +332,47 @@ docker rmi -f $(docker images -q)
 
 **Note**: This is a development setup. For production deployments, use Consul in cluster mode with proper security configurations.
 
+## Architecture Diagram
+
+```
+External Client (Browser)
+         ↓
+    http://localhost:8080
+         ↓
+  ┌──────────────────┐
+  │  Nginx Load      │
+  │  Balancer        │
+  │  (Port 8080)     │
+  └────────┬─────────┘
+           │
+    ┌──────┼──────┐
+    ↓      ↓      ↓
+┌─────┐ ┌─────┐ ┌─────┐
+│Dash │ │Dash │ │Dash │
+│  1  │ │  2  │ │  3  │
+└──┬──┘ └──┬──┘ └──┬──┘
+   │       │       │
+   └───────┼───────┘
+           │
+    Docker DNS: counting:9003
+           │
+    ┌──────┼──────┐
+    ↓      ↓      ↓
+┌─────┐ ┌─────┐ ┌─────┐
+│Count│ │Count│ │Count│
+│  1  │ │  2  │ │  3  │
+└──┬──┘ └──┬──┘ └──┬──┘
+   │       │       │
+   └───────┼───────┘
+           │
+    ┌──────────────┐
+    │   Consul     │
+    │  Registry &  │
+    │   Health     │
+    │  Monitoring  │
+    └──────────────┘
+```
+
 ## Quick Reference
 
 ### Common Commands
@@ -346,3 +411,85 @@ docker compose down
 - **Dashboard (Load Balanced)**: http://localhost:8080
 - **Consul UI**: http://localhost:8500
 - **Nginx Health Check**: http://localhost:8080/health
+
+## Troubleshooting
+
+### Dashboard Can't Connect to Counting Service
+
+```sh
+# Check if services are running
+docker ps | grep demo-consul-101-cicd
+
+# Test DNS resolution
+docker exec demo-consul-101-cicd-dashboard-1 nslookup counting
+
+# Test direct connection
+docker exec demo-consul-101-cicd-dashboard-1 wget -qO- http://counting:9003
+
+# Check dashboard logs
+docker logs demo-consul-101-cicd-dashboard-1
+
+# Check counting logs
+docker logs demo-consul-101-cicd-counting-1
+```
+
+### Services Not Registering in Consul
+
+```sh
+# Check consul-register logs
+docker logs consul-register
+
+# Manually run registration
+./register-services.sh
+
+# Check Consul connectivity
+docker exec demo-consul-101-cicd-dashboard-1 wget -qO- http://consul:8500/v1/catalog/services
+```
+
+### Nginx Not Load Balancing
+
+```sh
+# Check Nginx logs
+docker logs nginx-lb
+
+# Test Nginx configuration
+docker exec nginx-lb nginx -t
+
+# Reload Nginx
+docker exec nginx-lb nginx -s reload
+
+# Verify backend connectivity
+docker exec nginx-lb wget -qO- http://demo-consul-101-cicd-dashboard-1:9002
+```
+
+### Full Reset
+
+```sh
+# Stop and remove everything
+docker compose down -v
+
+# Remove all containers and networks
+docker rm -f $(docker ps -aq)
+docker network prune -f
+
+# Start fresh
+docker compose up --scale counting=3 --scale dashboard=3
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License.
+
+## Resources
+
+- [HashiCorp Consul Documentation](https://www.consul.io/docs)
+- [Docker Compose Documentation](https://docs.docker.com/compose/)
+- [Nginx Documentation](https://nginx.org/en/docs/)
+
+---
+
+**Built with ❤️ for learning Consul service discovery and load balancing**
