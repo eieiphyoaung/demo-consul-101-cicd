@@ -26,7 +26,7 @@ services:
     image: ei2000/dashboard:latest
     environment:
       - PORT=9002
-      - COUNTING_SERVICE_URL=http://counting:9003
+      - COUNTING_SERVICE_URL=http://counting.service.consul:9003
     depends_on:
       - counting
       - consul

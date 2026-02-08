@@ -15,12 +15,12 @@ All services run on a custom Docker bridge network (`consul-net`) for isolated c
 
 ## Key Features
 
-- ✅ **Service Discovery**: Docker DNS resolves service names automatically
+- ✅ **Service Discovery**: Consul DNS resolves `.service.consul` domains with health-aware routing
 - ✅ **Load Balancing**: Nginx distributes traffic across dashboard instances
-- ✅ **Health Monitoring**: Consul monitors all service health
+- ✅ **Health Monitoring**: Consul monitors all service health and filters unhealthy instances
 - ✅ **Auto Registration**: Services automatically register with Consul
 - ✅ **Scalability**: Easily scale services up or down
-- ✅ **Zero Configuration**: Works out of the box
+- ✅ **Resilience**: Automatic failover when services become unhealthy
 
 ## Prerequisites
 
@@ -63,44 +63,7 @@ curl -I http://localhost:8080
 docker compose logs -f dashboard
 ```
 
-### 4. View Container Startup Logs
-
-Monitor service containers as they start:
-
-```sh
-# View all services logs
-docker compose logs -f
-
-# View specific service logs
-docker logs -f demo-consul-101-cicd-counting-1
-docker logs -f demo-consul-101-cicd-dashboard-1
-docker logs -f demo-consul-101-cicd-counting-2
-docker logs -f consul
-```
-
-**Example Startup Output:**
-
-```
-counting-1  | Serving at http://localhost:9003
-counting-1  | (Pass as PORT environment variable)
-counting-2  | Serving at http://localhost:9003
-counting-2  | (Pass as PORT environment variable)
-counting-3  | Serving at http://localhost:9003
-counting-3  | (Pass as PORT environment variable)
-
-dashboard-1  | Starting server on http://0.0.0.0:9002
-dashboard-1  | (Pass as PORT environment variable)
-dashboard-1  | Using counting service at http://counting:9003
-dashboard-1  | (Pass as COUNTING_SERVICE_URL environment variable)
-dashboard-1  | Starting websocket server...
-dashboard-2  | Starting server on http://0.0.0.0:9002
-dashboard-2  | (Pass as PORT environment variable)
-dashboard-2  | Using counting service at http://counting:9003
-dashboard-2  | (Pass as COUNTING_SERVICE_URL environment variable)
-dashboard-2  | Starting websocket server...
-```
-
-### 5. View Service Registration Logs
+### 4. View Service Registration Logs
 
 Monitor the automated service registration process:
 
@@ -157,7 +120,7 @@ consul-register exited with code 0
 - **Port**: 9002
 - **Instances**: 3 (scalable)
 - **Health Check**: HTTP GET to `/health`
-- **Upstream**: Connects to counting service via Docker DNS (`http://counting:9003`)
+- **Upstream**: Connects to counting service via Consul DNS (`http://counting.service.consul:9003`)
 - **Access**: Via Nginx load balancer on port 8080
 
 ### Consul
@@ -169,14 +132,21 @@ consul-register exited with code 0
 
 ## How Service Discovery Works
 
-Dashboard connects to Counting service using Docker's built-in DNS:
+Dashboard connects to Counting service using Consul DNS:
 
 ```
 Dashboard Container
-    ↓ Query: counting:9003
+    ↓ Query: counting.service.consul:9003
     ↓
 Docker DNS (127.0.0.11)
-    ↓ Resolves to all healthy counting instances
+    ↓ Forwards .consul domain to host DNS
+    ↓
+Host DNS (or Docker daemon's DNS)
+    ↓ Not found locally
+    ↓
+Consul DNS Server (172.20.0.10:8600)
+    ↓ Queries Consul service catalog
+    ↓ Filters only HEALTHY instances
     ↓
 Returns: [172.20.0.3, 172.20.0.4, 172.20.0.2]
     ↓ Round-robin load balancing
@@ -184,18 +154,6 @@ Returns: [172.20.0.3, 172.20.0.4, 172.20.0.2]
 Counting Service Instance
 ```
 
-**Configuration:**
-```yaml
-dashboard:
-  environment:
-    - COUNTING_SERVICE_URL=http://counting:9003  # Docker DNS resolves this
-```
-
-**Why this works:**
-- Docker DNS automatically resolves service names from docker-compose.yaml
-- Network aliases ensure `counting` resolves to all counting containers
-- Consul monitors health and registers services for observability
-- Simple, reliable, and works out of the box!
 
 ## Checking Container IPs
 
@@ -247,17 +205,27 @@ curl http://localhost:8500/v1/health/service/counting
 
 ## Testing Service Discovery
 
-Test that dashboard can reach counting service:
+Test that dashboard can reach counting service via Consul DNS:
 
 ```sh
-# Test DNS resolution
+# Test Consul DNS resolution for .service.consul domain
+docker exec demo-consul-101-cicd-dashboard-1 nslookup counting.service.consul
+
+# Test HTTP connection using Consul DNS
+docker exec demo-consul-101-cicd-dashboard-1 wget -qO- http://counting.service.consul:9003
+
+# Test Docker DNS resolution (fallback)
 docker exec demo-consul-101-cicd-dashboard-1 nslookup counting
 
-# Test HTTP connection
+# Test HTTP connection using Docker DNS
 docker exec demo-consul-101-cicd-dashboard-1 wget -qO- http://counting:9003
 
 # Test end-to-end via Nginx
 curl http://localhost:8080
+
+# Verify services are registered in Consul
+docker exec consul consul catalog service counting
+curl http://localhost:8500/v1/health/service/counting
 ```
 
 ## Scaling Services
@@ -270,40 +238,6 @@ docker compose up --scale counting=5 --scale dashboard=2
 
 # Scale down to 1 instance each
 docker compose up --scale counting=1 --scale dashboard=1
-```
-
-**Note**: When scaling dashboard services beyond 3 instances, you'll need to update the `nginx.conf` file to include the additional backend servers, then reload Nginx:
-
-```sh
-# Edit nginx.conf to add more dashboard instances
-# Then reload Nginx configuration
-docker exec nginx-lb nginx -s reload
-```
-
-## Nginx Configuration
-
-The Nginx load balancer is configured with:
-
-- **Load Balancing Algorithm**: Least connections (`least_conn`)
-- **Backend Servers**: 
-  - `demo-consul-101-cicd-dashboard-1:9002`
-  - `demo-consul-101-cicd-dashboard-2:9002`
-  - `demo-consul-101-cicd-dashboard-3:9002`
-- **WebSocket Support**: Enabled for real-time updates
-- **Health Check**: Available at `/health`
-- **Proxy Headers**: X-Real-IP, X-Forwarded-For, X-Forwarded-Proto
-
-To modify the Nginx configuration:
-
-```sh
-# Edit the nginx.conf file
-nano nginx.conf
-
-# Reload Nginx to apply changes
-docker exec nginx-lb nginx -s reload
-
-# Test configuration for syntax errors
-docker exec nginx-lb nginx -t
 ```
 
 ## Stopping and Cleanup
