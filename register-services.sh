@@ -5,8 +5,8 @@
 echo "Registering counting services to Consul..."
 
 # Get container names and IPs for counting services
-COUNTING_DATA=($(docker ps --format "{{.Names}}" | grep "counting" | sort | xargs -I {} sh -c 'echo "{}:$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" {})"'))
-
+# COUNTING_DATA=($(docker ps --format "{{.Names}}" | grep "counting" | sort | xargs -I {} sh -c 'echo "{}:$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" {})"'))
+COUNTING_DATA=($(docker ps --filter "label=com.docker.compose.service=counting" --format "{{.Names}}" | sort | xargs -I {} sh -c 'echo "{}:$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" {})"'))
 # Register counting services
 for i in {0..2}; do
   SERVICE_ID="counting-$((i+1))"
@@ -44,8 +44,8 @@ echo ""
 echo "Registering dashboard services to Consul..."
 
 # Get container names and IPs for dashboard services
-DASHBOARD_DATA=($(docker ps --format "{{.Names}}" | grep "dashboard" | sort | xargs -I {} sh -c 'echo "{}:$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" {})"'))
-
+# DASHBOARD_DATA=($(docker ps --format "{{.Names}}" | grep "dashboard" | sort | xargs -I {} sh -c 'echo "{}:$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" {})"'))
+DASHBOARD_DATA=($(docker ps --filter "label=com.docker.compose.service=dashboard" --format "{{.Names}}" | sort | xargs -I {} sh -c 'echo "{}:$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" {})"'))
 # Register dashboard services
 for i in {0..2}; do
   SERVICE_ID="dashboard-$((i+1))"

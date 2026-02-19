@@ -240,7 +240,7 @@ docker compose up --scale counting=5 --scale dashboard=2
 docker compose up --scale counting=1 --scale dashboard=1
 ```
 
-## Stopping and Cleanup
+## Cleanup
 
 ### Stop All Services
 

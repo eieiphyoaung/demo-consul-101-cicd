@@ -13,6 +13,8 @@ services:
 
   counting:
     image: ei2000/counting:latest
+    ports:
+      - "9003:9003"  # Expose to host machine
     environment:
       - PORT=9003
     networks:
@@ -24,6 +26,8 @@ services:
 
   dashboard:
     image: ei2000/dashboard:latest
+    ports:
+      - "9002:9002"  # Expose to host machine
     environment:
       - PORT=9002
       - COUNTING_SERVICE_URL=http://counting.service.consul:9003
